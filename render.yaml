@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: faceai
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false        # Render dashboard mein manually set karo
+      - key: MONGODB_URI
+        sync: false        # Render dashboard mein manually set karo
+      - key: NODE_ENV
+        value: production

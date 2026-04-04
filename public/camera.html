@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FaceAI — Live Camera</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .page-header { padding: 40px 0 28px; text-align: center; }
+  .page-header h1 { font-family:'Syne',sans-serif; font-size:clamp(28px,5vw,44px); font-weight:800; letter-spacing:-1.5px; margin-bottom:10px; }
+  .page-header h1 span { background:linear-gradient(135deg,var(--accent3),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .page-header p { color:var(--muted); font-size:13px; }
+
+  /* Camera layout */
+  .cam-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  @media(max-width:720px){ .cam-layout { grid-template-columns: 1fr; } }
+
+  .cam-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; position: relative; }
+  .cam-box-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .cam-box-title { font-family:'Syne',sans-serif; font-size:13px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  .live-dot { width:7px; height:7px; background:var(--error); border-radius:50%; animation:pulse 1s infinite; }
+  .live-dot.on { background:var(--success); }
+
+  #video-container { position: relative; background: #000; aspect-ratio: 4/3; display:flex; align-items:center; justify-content:center; }
+  #video { width:100%; height:100%; object-fit:cover; display:block; transform: scaleX(-1); }
+  #canvas { display:none; }
+
+  /* Scanning frame overlay on video */
+  .vid-overlay { position:absolute; inset:0; pointer-events:none; }
+  .scan-frame { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:55%; aspect-ratio:3/4; }
+  .sf-corner { position:absolute; width:20px; height:20px; }
+  .sf-tl { top:0; left:0; border-top:2px solid var(--accent3); border-left:2px solid var(--accent3); }
+  .sf-tr { top:0; right:0; border-top:2px solid var(--accent3); border-right:2px solid var(--accent3); }
+  .sf-bl { bottom:0; left:0; border-bottom:2px solid var(--accent3); border-left:2px solid var(--accent3); }
+  .sf-br { bottom:0; right:0; border-bottom:2px solid var(--accent3); border-right:2px solid var(--accent3); }
+  .vid-scan-line { position:absolute; width:100%; height:2px; background:linear-gradient(90deg,transparent,var(--accent3),transparent); animation:scan 2.5s linear infinite; box-shadow:0 0 12px var(--accent3); display:none; }
+  .vid-scan-line.active { display:block; }
+
+  /* No camera placeholder */
+  .no-cam { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; color:var(--muted); font-size:13px; height:100%; min-height:220px; padding:32px; text-align:center; }
+  .no-cam svg { opacity:0.3; }
+
+  /* Controls */
+  .cam-controls { padding:16px 18px; display:flex; gap:10px; flex-wrap:wrap; }
+  .ctrl-btn { flex:1; min-width:100px; padding:11px 16px; border:none; border-radius:10px; font-family:'Syne',sans-serif; font-size:13px; font-weight:700; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:8px; }
+  .ctrl-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .btn-cam-start { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#050810; }
+  .btn-cam-start:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 6px 20px rgba(0,229,255,0.25); }
+  .btn-cam-snap { background:linear-gradient(135deg,var(--accent3),var(--accent2)); color:#fff; }
+  .btn-cam-snap:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 6px 20px rgba(255,78,205,0.25); }
+  .btn-cam-stop { background:rgba(255,68,68,0.12); border:1px solid rgba(255,68,68,0.25); color:var(--error); }
+  .btn-cam-stop:hover:not(:disabled) { background:rgba(255,68,68,0.2); }
+
+  /* Snapshot preview */
+  .snap-preview { display:none; position:relative; }
+  .snap-preview.visible { display:block; }
+  #snap-img { width:100%; display:block; }
+  .snap-overlay-text { position:absolute; bottom:12px; left:12px; background:rgba(5,8,16,0.8); border:1px solid var(--border); border-radius:8px; padding:6px 12px; font-size:11px; color:var(--muted); backdrop-filter:blur(4px); }
+
+  /* Results panel (right column) */
+  .results-col { display:flex; flex-direction:column; gap:14px; }
+  .result-placeholder { background:var(--surface); border:1px dashed var(--border); border-radius:16px; padding:48px 24px; text-align:center; color:var(--muted); font-size:13px; }
+  .result-placeholder .icon { font-size:36px; margin-bottom:12px; opacity:0.4; }
+  .result-placeholder p { font-size:12px; line-height:1.6; }
+
+  .result-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; overflow:hidden; animation:fadeUp 0.4s ease; }
+  .result-card-header { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .result-card-title { font-family:'Syne',sans-serif; font-size:13px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  .result-dot { width:7px; height:7px; background:var(--success); border-radius:50%; box-shadow:0 0 6px var(--success); }
+  .result-card-body { padding:18px; }
+
+  .mini-cards { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+  .mini-card { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+  .mini-label { color:var(--muted); font-size:9px; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:6px; }
+  .mini-value { font-family:'Syne',sans-serif; font-size:16px; font-weight:700; }
+
+  .analyzing-overlay { position:absolute; inset:0; background:rgba(5,8,16,0.7); display:none; align-items:center; justify-content:center; backdrop-filter:blur(4px); flex-direction:column; gap:12px; color:var(--text); font-size:13px; }
+  .analyzing-overlay.active { display:flex; }
+  .big-spinner { width:40px; height:40px; border:3px solid rgba(0,229,255,0.2); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+
+  .error-bar { background:rgba(255,68,68,0.08); border:1px solid rgba(255,68,68,0.2); border-radius:10px; padding:11px 16px; color:var(--error); font-size:12px; display:none; }
+  .error-bar.visible { display:block; }
+
+  /* History strip */
+  .history-strip { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:16px 18px; }
+  .history-strip h3 { font-family:'Syne',sans-serif; font-size:13px; font-weight:700; margin-bottom:14px; color:var(--muted); }
+  .history-items { display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto; }
+  .history-item { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; font-size:11px; }
+  .history-item:empty { display:none; }
+  .hi-left { display:flex; gap:8px; align-items:center; }
+  .hi-emotion { color:var(--accent3); font-weight:600; }
+  .hi-age { color:var(--accent); }
+  .hi-time { color:var(--muted); font-size:10px; }
+</style>
+</head>
+<body>
+<div class="glow-orb"></div>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><div class="logo-icon"><svg width="18" height="18" fill="none" stroke="#00e5ff" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4a3 3 0 110 6 3 3 0 010-6zm0 14c-2.67 0-5.03-1.34-6.47-3.36C7.04 14.62 9.41 14 12 14s4.96.62 6.47 1.64C16.03 17.66 13.67 19 12 19z"/></svg></div><div class="logo-text">Face<span>AI</span></div></a>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/camera" class="active">Camera</a>
+      <a href="/history">History</a>
+      <a href="/about">About</a>
+      <div id="nav-auth" style="display:none;align-items:center;gap:6px;"><a href="/login">Login</a><a href="/register" class="nav-btn">Register</a></div>
+      <div id="nav-user" style="display:none;align-items:center;gap:8px;"><div class="user-chip"><div class="user-dot"></div><span class="username-text"></span></div><button class="logout-btn" onclick="logout()">Logout</button></div>
+    </div>
+  </div>
+</nav>
+
+<div class="container" style="padding-bottom:60px;">
+  <div class="page-header">
+    <h1>Live <span>Camera</span> Analysis</h1>
+    <p>Open your camera, take a snapshot, and get instant AI facial analysis.</p>
+  </div>
+
+  <!-- Lock screen -->
+  <div id="lock-screen" style="display:none;padding:20px 0 60px;text-align:center;">
+    <div style="max-width:420px;margin:0 auto;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:48px 32px;">
+      <div style="font-size:40px;margin-bottom:16px;">🔒</div>
+      <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-bottom:10px;">Login Required</div>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:24px;">Camera analysis is only available for registered users.</p>
+      <div style="display:flex;gap:12px;justify-content:center;">
+        <a href="/login" style="padding:11px 24px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:10px;color:#050810;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;text-decoration:none;">Login</a>
+        <a href="/register" style="padding:11px 24px;border:1px solid var(--border);background:none;border-radius:10px;color:var(--text);font-family:'DM Mono',monospace;font-size:12px;text-decoration:none;">Register</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main camera app -->
+  <div id="main-app" style="display:none;">
+    <div class="error-bar" id="error-bar"></div>
+
+    <div class="cam-layout">
+      <!-- Left: Camera -->
+      <div>
+        <div class="cam-box">
+          <div class="cam-box-header">
+            <div class="cam-box-title">
+              <div class="live-dot" id="live-dot"></div>
+              <span id="cam-status-text">Camera Off</span>
+            </div>
+            <span style="font-size:10px;color:var(--muted);" id="cam-device-label"></span>
+          </div>
+
+          <div id="video-container">
+            <div class="no-cam" id="no-cam-msg">
+              <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+              <span>Click "Start Camera" to begin</span>
+            </div>
+            <video id="video" autoplay playsinline style="display:none;"></video>
+            <canvas id="canvas"></canvas>
+            <div class="vid-overlay">
+              <div class="scan-frame">
+                <div class="sf-corner sf-tl"></div><div class="sf-corner sf-tr"></div>
+                <div class="sf-corner sf-bl"></div><div class="sf-corner sf-br"></div>
+              </div>
+              <div class="vid-scan-line" id="vid-scan-line"></div>
+            </div>
+            <div class="analyzing-overlay" id="analyzing-overlay">
+              <div class="big-spinner"></div>
+              <span>Analyzing face...</span>
+            </div>
+          </div>
+
+          <!-- Snapshot preview -->
+          <div class="snap-preview" id="snap-preview">
+            <img id="snap-img" src="" alt="Snapshot">
+            <div class="snap-overlay-text">📸 Snapshot captured</div>
+          </div>
+
+          <div class="cam-controls">
+            <button class="ctrl-btn btn-cam-start" id="btn-start" onclick="startCamera()">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+              Start Camera
+            </button>
+            <button class="ctrl-btn btn-cam-snap" id="btn-snap" onclick="takeSnapshot()" disabled>
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M20.52 7H17l-2-3H9L7 7H3.48A2.48 2.48 0 001 9.48v9.04A2.48 2.48 0 003.48 21h17.04A2.48 2.48 0 0023 18.52V9.48A2.48 2.48 0 0020.52 7z"/></svg>
+              Capture & Analyze
+            </button>
+            <button class="ctrl-btn btn-cam-stop" id="btn-stop" onclick="stopCamera()" disabled>
+              <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+              Stop
+            </button>
+          </div>
+        </div>
+
+        <!-- Camera tips -->
+        <div style="margin-top:14px;background:rgba(0,229,255,0.04);border:1px solid rgba(0,229,255,0.1);border-radius:12px;padding:14px 16px;">
+          <p style="font-size:11px;color:var(--muted);line-height:1.7;">
+            💡 <strong style="color:var(--text);">Tips for best results:</strong><br>
+            • Face the camera directly with good lighting<br>
+            • Keep face centered in the frame markers<br>
+            • Stay still before capturing the snapshot
+          </p>
+        </div>
+      </div>
+
+      <!-- Right: Results -->
+      <div class="results-col">
+        <div id="result-area">
+          <div class="result-placeholder">
+            <div class="icon">🎯</div>
+            <p>Start your camera and take a snapshot.<br>AI analysis results will appear here.</p>
+          </div>
+        </div>
+
+        <!-- Session history strip -->
+        <div class="history-strip">
+          <h3>📋 Session History <span id="session-count" style="color:var(--accent);margin-left:6px;">0</span></h3>
+          <div class="history-items" id="history-items">
+            <div style="color:var(--muted);font-size:11px;text-align:center;padding:16px 0;">No snapshots yet this session</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer><div class="container">FaceAI — Powered by <span>AI</span> &nbsp;|&nbsp; Educational Use Only</div></footer>
+
+<script src="/nav.js"></script>
+<script>
+let stream = null;
+let sessionHistory = [];
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+
+// Auth check
+async function init() {
+  const res = await fetch('/api/me');
+  const data = await res.json();
+  if (!data.loggedIn) {
+    document.getElementById('lock-screen').style.display = 'block';
+  } else {
+    document.getElementById('main-app').style.display = 'block';
+  }
+}
+init();
+
+async function startCamera() {
+  hideError();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width:{ideal:1280}, height:{ideal:720} }, audio: false });
+    video.srcObject = stream;
+    video.style.display = 'block';
+    document.getElementById('no-cam-msg').style.display = 'none';
+    document.getElementById('snap-preview').classList.remove('visible');
+
+    // Update UI
+    document.getElementById('live-dot').classList.add('on');
+    document.getElementById('cam-status-text').textContent = 'Live';
+    const track = stream.getVideoTracks()[0];
+    document.getElementById('cam-device-label').textContent = track.label || '';
+
+    document.getElementById('btn-start').disabled = true;
+    document.getElementById('btn-snap').disabled = false;
+    document.getElementById('btn-stop').disabled = false;
+  } catch (err) {
+    showError('Camera access denied or not available. Please allow camera permission in your browser.');
+  }
+}
+
+function stopCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.style.display = 'none';
+  video.srcObject = null;
+  document.getElementById('no-cam-msg').style.display = 'flex';
+  document.getElementById('live-dot').classList.remove('on');
+  document.getElementById('cam-status-text').textContent = 'Camera Off';
+  document.getElementById('cam-device-label').textContent = '';
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-snap').disabled = true;
+  document.getElementById('btn-stop').disabled = true;
+  document.getElementById('vid-scan-line').classList.remove('active');
+}
+
+async function takeSnapshot() {
+  if (!stream) return;
+
+  // Draw video frame to canvas
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0);
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+  const base64 = dataUrl.split(',')[1];
+
+  // Show snapshot preview
+  document.getElementById('snap-img').src = dataUrl;
+  document.getElementById('snap-preview').classList.add('visible');
+
+  // Start scan animation
+  document.getElementById('vid-scan-line').classList.add('active');
+  document.getElementById('analyzing-overlay').classList.add('active');
+  document.getElementById('btn-snap').disabled = true;
+
+  hideError();
+
+  try {
+    const res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64, mimeType: 'image/jpeg' })
+    });
+
+    if (res.status === 401) { window.location.href = '/login'; return; }
+
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const result = JSON.parse(data.result.replace(/```json|```/g, '').trim());
+    renderResult(result, dataUrl);
+    addToSessionHistory(result);
+  } catch (err) {
+    showError('Analysis failed: ' + err.message);
+  } finally {
+    document.getElementById('analyzing-overlay').classList.remove('active');
+    document.getElementById('vid-scan-line').classList.remove('active');
+    document.getElementById('btn-snap').disabled = false;
+  }
+}
+
+function renderResult(r, snapUrl) {
+  const emotion = r.cards?.find(c => c.label === 'Emotion')?.value || 'N/A';
+  const age     = r.cards?.find(c => c.label === 'Estimated Age')?.value || 'N/A';
+  const gender  = r.cards?.find(c => c.label === 'Gender')?.value || 'N/A';
+  const attention = r.cards?.find(c => c.label === 'Attention')?.value || 'N/A';
+
+  document.getElementById('result-area').innerHTML = `
+    <div class="result-card">
+      <div class="result-card-header">
+        <div class="result-card-title"><div class="result-dot"></div>Analysis Complete</div>
+        <span style="font-size:10px;background:rgba(0,255,157,0.08);border:1px solid rgba(0,255,157,0.2);color:var(--success);padding:4px 10px;border-radius:20px;">${(r.confidence||'MEDIUM').toUpperCase()}</span>
+      </div>
+      <div class="result-card-body">
+        <div class="mini-cards">
+          <div class="mini-card"><div class="mini-label">Emotion</div><div class="mini-value" style="color:var(--accent3)">${emotion}</div></div>
+          <div class="mini-card"><div class="mini-label">Age Range</div><div class="mini-value" style="color:var(--accent)">${age}</div></div>
+          <div class="mini-card"><div class="mini-label">Gender</div><div class="mini-value" style="color:var(--accent2)">${gender}</div></div>
+          <div class="mini-card"><div class="mini-label">Attention</div><div class="mini-value" style="color:var(--success)">${attention}</div></div>
+        </div>
+        ${r.bars?.length ? `
+        <div style="margin-bottom:14px;">
+          ${r.bars.slice(0,3).map(b=>`
+            <div class="progress-row">
+              <div class="progress-label"><span>${b.label}</span><span>${b.value}%</span></div>
+              <div class="progress-track"><div class="progress-fill" data-val="${b.value}"></div></div>
+            </div>`).join('')}
+        </div>` : ''}
+        ${r.tags?.length ? `<div class="tag-row" style="margin-bottom:14px;">${r.tags.slice(0,5).map(t=>`<span class="tag">${t}</span>`).join('')}</div>` : ''}
+        <div style="font-size:12px;line-height:1.7;color:var(--muted);">${r.summary||''}</div>
+        <div style="margin-top:14px;font-size:10px;color:var(--muted);text-align:right;">📸 ${new Date().toLocaleTimeString()}</div>
+      </div>
+    </div>`;
+
+  // Animate progress bars
+  setTimeout(() => {
+    document.querySelectorAll('#result-area .progress-fill').forEach(el => {
+      el.style.width = el.dataset.val + '%';
+    });
+  }, 100);
+}
+
+function addToSessionHistory(r) {
+  const emotion = r.cards?.find(c=>c.label==='Emotion')?.value || 'N/A';
+  const age = r.cards?.find(c=>c.label==='Estimated Age')?.value || 'N/A';
+  sessionHistory.unshift({ emotion, age, time: new Date().toLocaleTimeString() });
+
+  document.getElementById('session-count').textContent = sessionHistory.length;
+
+  const container = document.getElementById('history-items');
+  container.innerHTML = sessionHistory.map(h => `
+    <div class="history-item">
+      <div class="hi-left">
+        <span class="hi-emotion">${h.emotion}</span>
+        <span class="hi-age">${h.age}</span>
+      </div>
+      <span class="hi-time">${h.time}</span>
+    </div>`).join('');
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-bar');
+  el.textContent = '⚠ ' + msg;
+  el.classList.add('visible');
+}
+function hideError() {
+  document.getElementById('error-bar').classList.remove('visible');
+}
+
+// Stop camera on page leave
+window.addEventListener('beforeunload', () => { if (stream) stream.getTracks().forEach(t=>t.stop()); });
+</script>
+</body>
+</html>

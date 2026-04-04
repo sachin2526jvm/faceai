@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FaceAI — Admin Dashboard</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .admin-header { padding: 40px 0 28px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+  .admin-header h1 { font-family:'Syne',sans-serif; font-size:32px; font-weight:800; letter-spacing:-1px; }
+  .admin-badge { background:rgba(255,184,0,0.1); border:1px solid rgba(255,184,0,0.3); color:var(--warning); padding:5px 14px; border-radius:20px; font-size:11px; }
+  .tabs { display:flex; gap:4px; margin-bottom:24px; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:4px; width:fit-content; }
+  .tab { padding:8px 20px; border-radius:7px; font-size:12px; cursor:pointer; color:var(--muted); transition:all 0.2s; border:none; background:none; font-family:'DM Mono',monospace; }
+  .tab.active { background:rgba(0,229,255,0.1); color:var(--accent); border:1px solid rgba(0,229,255,0.2); }
+  .stats-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:28px; }
+  .section { display:none; }
+  .section.active { display:block; }
+  .username-cell { display:flex; align-items:center; gap:8px; }
+  .avatar { width:30px; height:30px; border-radius:8px; background:linear-gradient(135deg,var(--accent),var(--accent2)); display:flex; align-items:center; justify-content:center; font-family:'Syne',sans-serif; font-size:12px; font-weight:700; color:#050810; flex-shrink:0; }
+  .action-btns { display:flex; gap:6px; }
+</style>
+</head>
+<body>
+<div class="glow-orb"></div>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><div class="logo-icon"><svg width="18" height="18" fill="none" stroke="#00e5ff" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4a3 3 0 110 6 3 3 0 010-6zm0 14c-2.67 0-5.03-1.34-6.47-3.36C7.04 14.62 9.41 14 12 14s4.96.62 6.47 1.64C16.03 17.66 13.67 19 12 19z"/></svg></div><div class="logo-text">Face<span>AI</span></div></a>
+    <div class="nav-links">
+      <span class="admin-badge">⚡ Admin Mode</span>
+      <a href="/">View Site</a>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+</nav>
+
+<div class="container-wide" style="padding-bottom:60px;">
+  <div class="admin-header">
+    <div>
+      <h1>Admin <span style="color:var(--warning)">Dashboard</span></h1>
+      <p style="color:var(--muted);font-size:13px;margin-top:4px;">Manage users and view all analysis records</p>
+    </div>
+    <button onclick="loadAll()" class="btn btn-primary" style="padding:10px 20px;">↻ Refresh</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row" id="stats-row"></div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('users')">👥 Users</button>
+    <button class="tab" onclick="switchTab('analyses')">📊 All Analyses</button>
+  </div>
+
+  <!-- Users Section -->
+  <div class="section active" id="section-users">
+    <div class="table-wrap" id="users-table"><div style="padding:32px;text-align:center;color:var(--muted);">Loading...</div></div>
+  </div>
+
+  <!-- Analyses Section -->
+  <div class="section" id="section-analyses">
+    <div class="table-wrap" id="analyses-table"><div style="padding:32px;text-align:center;color:var(--muted);">Loading...</div></div>
+  </div>
+</div>
+
+<footer><div class="container">FaceAI Admin Panel — <span>Restricted Access</span></div></footer>
+
+<script>
+let allUsers = [], allAnalyses = [];
+
+async function checkAdmin() {
+  const res = await fetch('/api/me');
+  const data = await res.json();
+  if (!data.loggedIn || !data.isAdmin) window.location.href = '/admin-login';
+}
+
+async function loadAll() {
+  [allUsers, allAnalyses] = await Promise.all([
+    fetch('/api/admin/users').then(r=>r.json()),
+    fetch('/api/admin/analyses').then(r=>r.json())
+  ]);
+  renderStats();
+  renderUsers();
+  renderAnalyses();
+}
+
+function renderStats() {
+  const blocked = allUsers.filter(u=>u.status==='blocked').length;
+  const totalAnalyses = allAnalyses.length;
+  const todayAnalyses = allAnalyses.filter(a=>new Date(a.createdAt).toDateString()===new Date().toDateString()).length;
+  document.getElementById('stats-row').innerHTML = `
+    <div class="card"><div class="card-label">Total Users</div><div class="card-value accent">${allUsers.length}</div></div>
+    <div class="card"><div class="card-label">Active Users</div><div class="card-value success">${allUsers.length-blocked}</div></div>
+    <div class="card"><div class="card-label">Blocked Users</div><div class="card-value" style="color:var(--error)">${blocked}</div></div>
+    <div class="card"><div class="card-label">Total Analyses</div><div class="card-value accent2">${totalAnalyses}</div></div>
+    <div class="card"><div class="card-label">Today's Analyses</div><div class="card-value accent3">${todayAnalyses}</div></div>
+  `;
+}
+
+function renderUsers() {
+  if (!allUsers.length) {
+    document.getElementById('users-table').innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);">No users registered yet.</div>';
+    return;
+  }
+  document.getElementById('users-table').innerHTML = `
+    <table>
+      <thead><tr><th>User</th><th>Email</th><th>Status</th><th>Registered</th><th>Analyses</th><th>Last Analysis</th><th>Actions</th></tr></thead>
+      <tbody>${allUsers.map(u=>`
+        <tr id="row-${u.id}">
+          <td><div class="username-cell"><div class="avatar">${u.username[0].toUpperCase()}</div>${u.username}</div></td>
+          <td style="color:var(--muted)">${u.email}</td>
+          <td><span class="status-${u.status}">${u.status==='active'?'● Active':'● Blocked'}</span></td>
+          <td style="color:var(--muted);font-size:11px">${new Date(u.createdAt).toLocaleDateString()}</td>
+          <td style="text-align:center;color:var(--accent)">${u.totalAnalyses}</td>
+          <td style="color:var(--muted);font-size:11px">${u.lastAnalysis?new Date(u.lastAnalysis).toLocaleString():'Never'}</td>
+          <td><div class="action-btns">
+            <button class="btn btn-warn" onclick="toggleBlock('${u.id}')">${u.status==='blocked'?'Unblock':'Block'}</button>
+            <button class="btn btn-danger" onclick="deleteUser('${u.id}','${u.username}')">Delete</button>
+          </div></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderAnalyses() {
+  if (!allAnalyses.length) {
+    document.getElementById('analyses-table').innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);">No analyses recorded yet.</div>';
+    return;
+  }
+  document.getElementById('analyses-table').innerHTML = `
+    <table>
+      <thead><tr><th>#</th><th>User</th><th>Date & Time</th><th>Age</th><th>Gender</th><th>Emotion</th><th>Confidence</th><th>Faces</th></tr></thead>
+      <tbody>${allAnalyses.map((a,i)=>`
+        <tr>
+          <td style="color:var(--muted)">${allAnalyses.length-i}</td>
+          <td style="color:var(--accent)">${a.username}</td>
+          <td style="font-size:11px;color:var(--muted)">${new Date(a.createdAt).toLocaleString()}</td>
+          <td>${a.age||'N/A'}</td>
+          <td>${a.gender||'N/A'}</td>
+          <td><span style="color:var(--accent3)">${a.emotion||'N/A'}</span></td>
+          <td><span style="color:${a.confidence==='High'?'var(--success)':a.confidence==='Low'?'var(--error)':'var(--warning)'}">${a.confidence||'N/A'}</span></td>
+          <td style="text-align:center">${a.facesDetected??0}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function toggleBlock(userId) {
+  const res = await fetch('/api/admin/toggle-block', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId})});
+  const data = await res.json();
+  if (data.success) loadAll();
+}
+
+async function deleteUser(userId, username) {
+  if (!confirm(`Delete user "${username}" and all their data? This cannot be undone.`)) return;
+  const res = await fetch('/api/admin/delete-user', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId})});
+  const data = await res.json();
+  if (data.success) loadAll();
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['users','analyses'][i]===tab));
+  document.getElementById('section-users').classList.toggle('active', tab==='users');
+  document.getElementById('section-analyses').classList.toggle('active', tab==='analyses');
+}
+
+async function logout() {
+  await fetch('/api/logout',{method:'POST'});
+  window.location.href='/admin-login';
+}
+
+checkAdmin().then(loadAll);
+</script>
+</body>
+</html>

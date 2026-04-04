@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FaceAI — Admin Login</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="glow-orb"></div>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><div class="logo-icon"><svg width="18" height="18" fill="none" stroke="#00e5ff" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4a3 3 0 110 6 3 3 0 010-6zm0 14c-2.67 0-5.03-1.34-6.47-3.36C7.04 14.62 9.41 14 12 14s4.96.62 6.47 1.64C16.03 17.66 13.67 19 12 19z"/></svg></div><div class="logo-text">Face<span>AI</span></div></a>
+    <div class="nav-links"><a href="/">Home</a></div>
+  </div>
+</nav>
+<div class="page-center">
+  <div class="form-card">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="width:56px;height:56px;background:rgba(255,184,0,0.1);border:1px solid rgba(255,184,0,0.3);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+        <svg width="24" height="24" fill="none" stroke="#ffb800" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+    </div>
+    <div class="form-title" style="text-align:center">Admin Panel</div>
+    <div class="form-sub" style="text-align:center">Enter admin credentials to continue</div>
+    <div class="alert alert-error" id="error-alert"></div>
+    <div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="username" placeholder="admin"></div>
+    <div class="form-group"><label class="form-label">Password</label><input type="password" class="form-input" id="password" placeholder="••••••••"></div>
+    <button class="submit-btn" id="btn" onclick="doLogin()" style="background:linear-gradient(135deg,#ffb800,#ff4ecd)">Access Admin Panel</button>
+    <div class="form-footer"><a href="/">← Back to Home</a></div>
+  </div>
+</div>
+<script>
+document.getElementById('password').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+async function doLogin(){
+  const username=document.getElementById('username').value.trim();
+  const password=document.getElementById('password').value;
+  if(!username||!password){const el=document.getElementById('error-alert');el.textContent='⚠ Enter username and password.';el.classList.add('visible');return;}
+  const btn=document.getElementById('btn');btn.disabled=true;btn.textContent='Verifying...';
+  try{
+    const res=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+    const data=await res.json();
+    if(!res.ok){const el=document.getElementById('error-alert');el.textContent='⚠ '+(data.error||'Login failed.');el.classList.add('visible');return;}
+    window.location.href='/admin';
+  }catch{const el=document.getElementById('error-alert');el.textContent='⚠ Cannot connect to server.';el.classList.add('visible');}
+  finally{btn.disabled=false;btn.textContent='Access Admin Panel';}
+}
+</script>
+</body>
+</html>

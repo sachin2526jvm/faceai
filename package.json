@@ -1,0 +1,17 @@
+{
+  "name": "faceai",
+  "version": "1.0.0",
+  "description": "AI-powered face recognition web app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "mongodb": "^6.21.0",
+    "node-fetch": "^3.3.2"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
