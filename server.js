@@ -226,6 +226,7 @@ const server = http.createServer(async (req, res) => {
     // ── Free Vision Models — April 2026 mein available & accurate ───────────────
     // NOTE: gemini-2.0-flash-exp:free Feb 2026 mein deprecated ho gaya, use mat karo
     const FREE_MODELS = [
+       'openrouter/free', 
       'meta-llama/llama-4-maverick:free',           // ★ BEST  — Llama 4 Maverick, 400B MoE, top vision
       'meta-llama/llama-4-scout:free',              // ★ GREAT — Llama 4 Scout, 109B MoE, fast + accurate
       'google/gemini-2.5-pro-exp-03-25:free',       // ★ GREAT — Gemini 2.5 Pro FREE (experimental)
